@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Open in Messages</title>
+<style>
+  :root { --green: #3C7879; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+         background: #f6f7f7; color: #1f2a2a; display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; }
+  main { width: 100%; max-width: 440px; background: #fff; border-radius: 16px; padding: 28px 24px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .to { color: #5b6b6b; font-size: 15px; margin: 0 0 18px; }
+  .preview { white-space: pre-wrap; background: #eef4f4; border-radius: 12px; padding: 14px; font-size: 15px; line-height: 1.45; margin: 0 0 20px; word-break: break-word; }
+  a.btn, button.btn { display: block; width: 100%; text-align: center; text-decoration: none; border: 0; cursor: pointer;
+           background: var(--green); color: #fff; font-size: 17px; font-weight: 600; padding: 16px; border-radius: 12px; }
+  button.secondary { background: #fff; color: var(--green); border: 1.5px solid var(--green); margin-top: 10px; font-size: 15px; padding: 12px; }
+  .note { font-size: 13px; color: #6b7b7b; margin-top: 16px; line-height: 1.4; }
+  .err { color: #a33; }
+</style>
+</head>
+<body>
+<main id="app">
+  <h1 id="title">Open in Messages</h1>
+  <p class="to" id="to"></p>
+  <div class="preview" id="preview" hidden></div>
+  <a class="btn" id="open" href="#">Open in Messages</a>
+  <button class="btn secondary" id="copy" type="button">Copy text</button>
+  <p class="note" id="note">Messages opens with the number and text filled in. Read it over, then tap send.</p>
+</main>
+<script>
+// Data lives in the #fragment, which browsers never send to the server.
+(function () {
+  var p = new URLSearchParams(location.hash.slice(1));
+  var digits = (p.get("to") || "").replace(/\D/g, "");
+  var body = p.get("b") || "";
+  var name = p.get("n") || "";
+  var $ = function (id) { return document.getElementById(id); };
+
+  if (digits.length === 10) digits = "1" + digits;
+  if (digits.length < 11) {
+    $("title").textContent = "Missing phone number";
+    $("title").className = "err";
+    $("open").hidden = true; $("copy").hidden = true;
+    $("note").textContent = "This link has no valid number. Check the Phone column in the sheet.";
+    return;
+  }
+
+  var pretty = "+" + digits[0] + " (" + digits.substr(1,3) + ") " + digits.substr(4,3) + "-" + digits.substr(7);
+  $("title").textContent = name ? "Text " + name : "Open in Messages";
+  $("to").textContent = pretty;
+  if (body) { $("preview").textContent = body; $("preview").hidden = false; }
+
+  // iPhone/iPad/Mac use "&body=", Android uses "?body=".
+  var ua = navigator.userAgent;
+  var isAndroid = /Android/i.test(ua);
+  var sep = isAndroid ? "?" : "&";
+  var href = "sms:+" + digits + (body ? sep + "body=" + encodeURIComponent(body) : "");
+  $("open").href = href;
+
+  $("copy").addEventListener("click", function () {
+    var done = function () { $("copy").textContent = "Copied"; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(body).then(done, function () {});
+    }
+  });
+
+  // Try to open right away; the button stays as a fallback if the browser asks first or blocks it.
+  setTimeout(function () { location.href = href; }, 150);
+})();
+</script>
+</body>
+</html>
