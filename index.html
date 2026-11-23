@@ -17,9 +17,10 @@
   .preview { white-space: pre-wrap; background: #eef4f4; border-radius: 12px; padding: 14px; font-size: 15px; line-height: 1.45; margin: 0 0 20px; word-break: break-word; }
   a.btn, button.btn { display: block; width: 100%; text-align: center; text-decoration: none; border: 0; cursor: pointer;
            background: var(--green); color: #fff; font-size: 17px; font-weight: 600; padding: 16px; border-radius: 12px; }
-  button.secondary { background: #fff; color: var(--green); border: 1.5px solid var(--green); margin-top: 10px; font-size: 15px; padding: 12px; }
+  a.secondary, button.secondary { background: #fff; color: var(--green); border: 1.5px solid var(--green); margin-top: 10px; font-size: 15px; padding: 12px; }
   .note { font-size: 13px; color: #6b7b7b; margin-top: 16px; line-height: 1.4; }
   .err { color: #a33; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -28,38 +29,33 @@
   <p class="to" id="to"></p>
   <div class="preview" id="preview" hidden></div>
   <a class="btn" id="open" href="#">Open in Messages</a>
+  <a class="btn secondary" id="alt" href="#" hidden></a>
   <button class="btn secondary" id="copy" type="button">Copy text</button>
   <p class="note" id="note">Messages opens with the number and text filled in. Read it over, then tap send.</p>
 </main>
 <script>
 // Data lives in the #fragment, which browsers never send to the server.
+// Text:  #to=<phone>&n=<name>&b=<body>   (leave out "to" to pick the person in Messages)
+// Email: #e=<address>&n=<name>&s=<subject>&b=<body>
 (function () {
   var p = new URLSearchParams(location.hash.slice(1));
-  var digits = (p.get("to") || "").replace(/\D/g, "");
+  var rawTo = p.get("to") || "";
+  var digits = rawTo.replace(/\D/g, "");
+  var email = (p.get("e") || "").trim();
+  var subject = p.get("s") || "";
   var body = p.get("b") || "";
   var name = p.get("n") || "";
   var $ = function (id) { return document.getElementById(id); };
-
-  if (digits.length === 10) digits = "1" + digits;
-  if (digits.length < 11) {
-    $("title").textContent = "Missing phone number";
-    $("title").className = "err";
-    $("open").hidden = true; $("copy").hidden = true;
-    $("note").textContent = "This link has no valid number. Check the Phone column in the sheet.";
-    return;
-  }
-
-  var pretty = "+" + digits[0] + " (" + digits.substr(1,3) + ") " + digits.substr(4,3) + "-" + digits.substr(7);
-  $("title").textContent = name ? "Text " + name : "Open in Messages";
-  $("to").textContent = pretty;
-  if (body) { $("preview").textContent = body; $("preview").hidden = false; }
-
-  // iPhone/iPad/Mac use "&body=", Android uses "?body=".
   var ua = navigator.userAgent;
   var isAndroid = /Android/i.test(ua);
-  var sep = isAndroid ? "?" : "&";
-  var href = "sms:+" + digits + (body ? sep + "body=" + encodeURIComponent(body) : "");
-  $("open").href = href;
+  var isPhone = isAndroid || /iPhone|iPad|iPod/i.test(ua);
+
+  function fail(title, note) {
+    $("title").textContent = title;
+    $("title").className = "err";
+    $("open").hidden = true; $("copy").hidden = true; $("alt").hidden = true;
+    $("note").textContent = note;
+  }
 
   $("copy").addEventListener("click", function () {
     var done = function () { $("copy").textContent = "Copied"; };
@@ -67,6 +63,57 @@
       navigator.clipboard.writeText(body).then(done, function () {});
     }
   });
+
+  // Email
+  if (email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return fail("Missing email address", "This link has no valid email address. Check the Email column in the sheet.");
+    }
+    var q = [];
+    if (subject) q.push("subject=" + encodeURIComponent(subject));
+    if (body) q.push("body=" + encodeURIComponent(body));
+    var mailto = "mailto:" + encodeURIComponent(email).replace(/%40/g, "@") + (q.length ? "?" + q.join("&") : "");
+    var gmail = "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(email) +
+                "&su=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    document.title = "Open in Mail";
+    $("title").textContent = name ? "Email " + name : "Open in Mail";
+    $("to").textContent = email;
+    if (subject || body) {
+      $("preview").textContent = (subject ? "Subject: " + subject + "\n\n" : "") + body;
+      $("preview").hidden = false;
+    }
+    $("open").textContent = "Open in Mail";
+    $("open").href = mailto;
+    $("alt").textContent = "Open in Gmail";
+    $("alt").href = gmail;
+    $("alt").hidden = false;
+    $("note").textContent = "A draft opens with the address, subject and message filled in. Read it over, check which account it is sending from, then send.";
+    // Phones have a mail app; on a computer let the person choose Mail or Gmail.
+    if (isPhone) setTimeout(function () { location.href = mailto; }, 150);
+    return;
+  }
+
+  // Text
+  if (digits.length === 10) digits = "1" + digits;
+  if (rawTo && digits.length < 11) {
+    return fail("Missing phone number", "This link has no valid number. Check the Phone column in the sheet.");
+  }
+  if (!digits && !body) {
+    return fail("Nothing to open", "This link has no number, email address or message. Check the row in the sheet.");
+  }
+
+  // iPhone/iPad/Mac use "&body=", Android uses "?body=".
+  var sep = isAndroid ? "?" : "&";
+  var href = "sms:" + (digits ? "+" + digits : "") + (body ? sep + "body=" + encodeURIComponent(body) : "");
+  $("title").textContent = name ? "Text " + name : "Open in Messages";
+  if (digits) {
+    $("to").textContent = "+" + digits[0] + " (" + digits.substr(1,3) + ") " + digits.substr(4,3) + "-" + digits.substr(7);
+  } else {
+    $("to").textContent = "No number on file";
+    $("note").textContent = "Messages opens with the text filled in. Type the person's name in the To line, read it over, then tap send.";
+  }
+  if (body) { $("preview").textContent = body; $("preview").hidden = false; }
+  $("open").href = href;
 
   // Try to open right away; the button stays as a fallback if the browser asks first or blocks it.
   setTimeout(function () { location.href = href; }, 150);
